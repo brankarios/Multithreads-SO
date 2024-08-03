@@ -6,10 +6,10 @@
 
 typedef struct
 {
+    char* fileName;
     int sortedLines;
     char* longestString;
     char* shortestString;
-
 } stats_t;
 
 
