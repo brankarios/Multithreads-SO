@@ -8,15 +8,21 @@
 
 int indexOfFirstFile = 0;
 sem_t indexS;
+int totalSorted = 0;
 
-int getNumberOfLinesWithName(char *fileName /*, stats_t stats*/){
+int getNumberOfLinesWithName(char *fileName){
 
-    int count = 1;
+    int count = 0;
     FILE *fp = fopen(fileName, "r");
+    char c;
 
-    for (char c = getc(fp); c != EOF; c = getc(fp)){
-        if (c == '\n'){
-            count++;
+    while(c = getc(fp)){
+        if (c == '\n'){ 
+            count += 1;
+        }
+        else if (c == EOF){
+            count +=1;
+            break;
         }
     }
     fclose(fp);
@@ -24,7 +30,7 @@ int getNumberOfLinesWithName(char *fileName /*, stats_t stats*/){
     return count;
 }
 
-char* getLongestString(char* strings[], int numOfStrings/*, stats_t stats*/){
+char* getLongestString(char* strings[], int numOfStrings){
     char* longestString = strings[0];
 
     for(int i = 1; i < numOfStrings; i++){
@@ -34,20 +40,18 @@ char* getLongestString(char* strings[], int numOfStrings/*, stats_t stats*/){
     }
 
     return longestString;
-    //stats.longestString = longestString;
 }
 
-char* getShortestString(char* strings[], int numOfStrings /*, stats_t stats*/){
+char* getShortestString(char* strings[], int numOfStrings){
     char* shortestString = strings[0];
 
     for(int i = 1; i < numOfStrings; i++){
-        if(strlen(shortestString) > strlen(strings[i]) && (strings[i] != '\n' || strings[i] != ' ')){
+        if(strlen(shortestString) > strlen(strings[i]) && isspace(*strings[i]) == 0){
             shortestString = strings[i];
         }
     }
 
     return shortestString;
-    //stats.shortestString = shortestString;
 }
 
 int compare( const void *arg1, const void *arg2 )
@@ -82,11 +86,21 @@ void sortFile(stats_t *estadistica){
     FILE* ordenado = fopen(sortedFileName, "w+");
     char* stringArray[5000];
     unsigned int numOfLines = getNumberOfLinesWithName((*estadistica).fileName);
-    
-    for(int i = 0; i < getNumberOfLinesWithName((*estadistica).fileName); i++){
+
+    for(int i = 0; i < numOfLines; i++){
         stringArray[i] = malloc(5000);
         fgets(stringArray[i], 5000, original);
         stringArray[i] = trim(stringArray[i]);
+        if(strlen(stringArray[i]) == 0){
+            numOfLines--;
+            i--;
+            sem_wait(&indexS);
+            totalSorted--;
+            sem_post(&indexS);
+        } 
+        sem_wait(&indexS);
+        totalSorted++;
+        sem_post(&indexS);
     }
 
     qsort(stringArray, numOfLines, sizeof(malloc(5000)), compare);
@@ -107,15 +121,18 @@ void sortFile(stats_t *estadistica){
 }
 
 int deleteDuplicates(char* strings[], int size){
-    char* auxString = malloc(5000);
     int linesDeleted = 0;
 
     for(int i = 0; i < size; i++){
-        auxString = strings[i];
-        for(int j = i+1; j < size; j++){
-            if(auxString == strings[j]){
-                strings[j] = NULL;
+        for(int j = 0; j < i; j++){
+            if(strcasecmp(strings[i], strings[j]) == 0){
+                for (int k = i; k < size - 1; k++) {
+                    strings[k] = strings[k + 1];
+                }
                 linesDeleted++;
+                size--;
+                i--;
+                break;
             }
         }
     }
@@ -134,8 +151,8 @@ void sortTempFile(char* fileNames[]){
     tmpnam(tempFileName);
     FILE* temp = fopen(tempFileName, "w+");
 
-    int linesFirstFile = getNumberOfLinesWithName(fileNames[indexOfFirstFile]);
-    int linesSecondFile = getNumberOfLinesWithName(fileNames[indexOfFirstFile+1]);
+    int linesFirstFile = getNumberOfLinesWithName(fileNames[indexOfFirstFile])-1;
+    int linesSecondFile = getNumberOfLinesWithName(fileNames[indexOfFirstFile+1])-1;
 
     for(int i = 0; i < linesFirstFile + linesSecondFile; i++){
         if(i < linesFirstFile){
@@ -148,16 +165,20 @@ void sortTempFile(char* fileNames[]){
         }
     }
     int linesDeleted = deleteDuplicates(stringFile, linesFirstFile + linesSecondFile);
+    int linesFinalFile = linesFirstFile+linesSecondFile-linesDeleted;
 
-    for(int i = 0; i < linesFirstFile+linesSecondFile; i++){
+    for(int i = 0; i < linesFinalFile; i++){
         if(stringFile[i] != NULL){
-            fprintf(temp, "%s", stringFile[i]);
+            if(strlen(stringFile[i]) > 0 && (*stringFile[i]) != '\n'){
+                fprintf(temp, "%s", stringFile[i]);
+            }
         }
     }
 
-    printf("Merged %d lines and %d lines into %d lines.\n", linesFirstFile-1, linesSecondFile-1, linesFirstFile+linesSecondFile-linesDeleted-2);
+    printf("Merged %d lines and %d lines into %d lines.\n", linesFirstFile, linesSecondFile, linesFinalFile);
 
     fileNames[indexOfFirstFile] = strdup(tempFileName);
+
     sem_post(&indexS);
     fclose(firstFile);
     fclose(secondFile);
@@ -171,8 +192,8 @@ void fixArray(char* files[], int size){
     char* aux = malloc(5000 * sizeof(char));
 
     for(int i = 0; i < size; i++){
-        aux = files[i];
         if(i % 2 == 0){
+            aux = files[i];
             files[i] = NULL;
             files[i-desplazamiento] = aux;
             desplazamiento++;
@@ -238,13 +259,15 @@ void main(int argc, char* argv[]){
 
         for(int i = 0; i < remainingFiles/2; i++){
             pthread_join(sortingThreads[i], NULL);
-            remainingFiles--;
         }
+
+        remainingFiles-= remainingFiles/2;
 
         fixArray(nameOfFiles, argc-1);
     }
 
-    int linesOfLastFile = getNumberOfLinesWithName(nameOfFiles[0]);
+    
+    int linesOfLastFile = getNumberOfLinesWithName(nameOfFiles[0])-1;
     FILE* sorted = fopen("sorted.txt", "w+");
     FILE* lastFile = fopen(nameOfFiles[0], "r");
     char* string[linesOfLastFile];
@@ -260,7 +283,7 @@ void main(int argc, char* argv[]){
         fprintf(sorted, "%s", string[i]);
     }
 
-    printf("A total of %d strings were passed as input.\n", linesOfLastFile-1);
+    printf("A total of %d strings were passed as input.\n", totalSorted);
     printf("Longest string sorted: %s", getLongestString(string, linesOfLastFile-1));
     printf("Shortest string sorted: %s", getShortestString(string, linesOfLastFile-1));
     sem_destroy(&indexS);
