@@ -10,6 +10,11 @@ int indexOfFirstFile = 0;
 sem_t indexS;
 int totalSorted = 0;
 
+int compare( const void *arg1, const void *arg2 )
+{
+   return -strcasecmp( * ( char** ) arg1, * ( char** ) arg2 );
+}
+
 int getNumberOfLinesWithName(char *fileName){
 
     int count = 0;
@@ -37,6 +42,9 @@ char* getLongestString(char* strings[], int numOfStrings){
         if(strlen(longestString) < strlen(strings[i])){
             longestString = strings[i];
         }
+        else if(strlen(longestString) == strlen(strings[i]) && strcasecmp(longestString, strings[i]) < 0){
+            longestString = strings[i];
+        }
     }
 
     return longestString;
@@ -49,14 +57,12 @@ char* getShortestString(char* strings[], int numOfStrings){
         if(strlen(shortestString) > strlen(strings[i]) && isspace(*strings[i]) == 0){
             shortestString = strings[i];
         }
+        else if(strlen(shortestString) == strlen(strings[i]) && strcasecmp(shortestString, strings[i]) < 0){
+            shortestString = strings[i];
+        }
     }
 
     return shortestString;
-}
-
-int compare( const void *arg1, const void *arg2 )
-{
-   return -strcasecmp( * ( char** ) arg1, * ( char** ) arg2 );
 }
 
 char *ltrim(char *s)
