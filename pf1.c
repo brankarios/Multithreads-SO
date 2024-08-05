@@ -215,7 +215,7 @@ void main(int argc, char* argv[]){
     sem_init(&indexS,0,1);
     
     if (argc < 3){
-        perror(0);
+        error(0);
     }
 
     pthread_t workers[argc-1];
